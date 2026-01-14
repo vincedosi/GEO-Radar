@@ -9,10 +9,15 @@ import google.generativeai as genai
 from mistralai import Mistral
 
 # CONFIGURATION
-SCOPES = [
+# 1. On définit la liste des permissions (singulier : scope)
+scope = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
+
+# 2. On utilise cette variable exacte dans la ligne suivante
+# Fais bien attention : ici aussi on écrit 'scope' (sans 's')
+creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 def get_google_client():
     """Connexion sécurisée via la variable d'environnement JSON"""
     json_str = os.getenv("GOOGLE_JSON_KEY")
@@ -173,3 +178,4 @@ def main():
 if __name__ == "__main__":
 
     main()
+
