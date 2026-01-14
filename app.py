@@ -40,10 +40,15 @@ def get_data():
         return pd.DataFrame()
         
     # À vérifier/modifier dans monitor.py et app.py
+   # 1. On définit la liste des permissions (singulier : scope)
     scope = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
     ]
+
+# 2. On utilise cette variable exacte dans la ligne suivante
+# Fais bien attention : ici aussi on écrit 'scope' (sans 's')
+creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     client = gspread.authorize(creds)
     
