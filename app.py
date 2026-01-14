@@ -1,134 +1,110 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import gspread
 import json
-import os
 from google.oauth2.service_account import Credentials
 
-# 1. CONFIG PAGE & CSS
-st.set_page_config(page_title="GEO-Radar Analytics", layout="wide", page_icon="📡")
+# 1. CONFIGURATION
+st.set_page_config(page_title="GEO-Radar V2", layout="wide", page_icon="📡")
 
+# Style CSS personnalisé
 st.markdown("""
 <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    .stApp {background-color: #f8f9fa;}
-    h1, h2, h3 {font-family: 'Helvetica Neue', sans-serif; color: #0f172a;}
-    div[data-testid="metric-container"] {
-        background-color: white;
-        padding: 15px;
-        border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
+    .main { background-color: #f8f9fa; }
+    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .reponse-ia { padding: 15px; border-left: 5px solid #4F46E5; background-color: #f1f5f9; margin-bottom: 10px; border-radius: 0 10px 10px 0; }
 </style>
 """, unsafe_allow_html=True)
 
-# 2. CONNEXION DONNÉES
-@st.cache_resource
+@st.cache_resource(ttl=600)
 def get_data():
-    # Gestion Secret : Cloud (st.secrets)
-    if "GOOGLE_JSON_KEY" in st.secrets:
-        creds_dict = json.loads(st.secrets["GOOGLE_JSON_KEY"])
-    else:
-        st.error("Clé GOOGLE_JSON_KEY introuvable dans les secrets.")
-        return pd.DataFrame()
-        
-    # Définition des scopes
-    scope = [
-        "https://www.googleapis.com/auth/spreadsheets", 
-        "https://www.googleapis.com/auth/drive"
-    ]
-
-    # Création des credentials avec le scope
+    creds_dict = json.loads(st.secrets["GOOGLE_JSON_KEY"])
+    scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     client = gspread.authorize(creds)
     
-    # Ouverture du fichier
-    try:
-        sh = client.open("GEO-Radar_DATA")
-        ws = sh.worksheet("LOGS_RESULTATS")
-        data = ws.get_all_records()
-        df = pd.DataFrame(data)
-        if not df.empty:
-            df['Timestamp'] = pd.to_datetime(df['Timestamp'])
-        return df
-    except Exception as e:
-        st.error(f"Erreur lors de la lecture du Google Sheet : {e}")
-        return pd.DataFrame()
+    sh = client.open("GEO-Radar_DATA")
+    ws = sh.worksheet("LOGS_RESULTATS")
+    df = pd.DataFrame(ws.get_all_records())
+    df['Timestamp'] = pd.to_datetime(df['Timestamp'])
+    return df
 
 try:
     df = get_data()
-    if df.empty:
-        st.warning("Le tableau de bord est vide. En attente de données...")
-        st.stop()
 except Exception as e:
-    st.error(f"Erreur de connexion : {e}")
+    st.error(f"Erreur de chargement : {e}")
     st.stop()
 
-# 3. INTERFACE PRINCIPALE
-st.title("📡 GEO-Radar | Performance Sémantique")
+# --- SIDEBAR ---
+st.sidebar.title("📡 GEO-Radar Admin")
+client_list = df['Client'].unique()
+selected_client = st.sidebar.selectbox("🎯 Client", client_list)
+df_c = df[df['Client'] == selected_client].copy()
 
-tab1, tab2 = st.tabs(["📊 Dashboard", "🎓 Méthodologie"])
+if st.sidebar.button("🔄 Actualiser les données"):
+    st.cache_resource.clear()
+    st.rerun()
+
+# --- HEADER ---
+st.title(f"Analyse de Visibilité IA : {selected_client}")
+
+# --- TABS ---
+tab1, tab2, tab3 = st.tabs(["📊 Performance Globale", "🤖 Comparatif IA", "🔍 Explorateur de Réponses"])
 
 with tab1:
-    # --- SIDEBAR FILTERS ---
-    st.sidebar.header("Filtres")
+    # KPIs
+    c1, c2, c3, c4 = st.columns(4)
+    avg_score = df_c['Score_Global'].mean()
+    c1.metric("Score GEO Moyen", f"{avg_score:.1f}%")
+    c2.metric("Total Tests", len(df_c))
     
-    clients_list = df['Client'].unique().tolist()
-    selected_client = st.sidebar.selectbox("Choisir un Client", clients_list)
+    best_ia = "Perplexity" if df_c['Score_PPLX'].mean() > df_c['Score_GEM'].mean() else "Gemini"
+    c3.metric("IA la plus favorable", best_ia)
     
-    df_client = df[df['Client'] == selected_client]
-    
-    questions_list = ["🌍 VUE GLOBALE (Moyenne)"] + df_client['Mot_Cle'].unique().tolist()
-    selected_question = st.sidebar.selectbox("Choisir une Question", questions_list)
-    
-    if selected_question == "🌍 VUE GLOBALE (Moyenne)":
-        df_viz = df_client.groupby(df_client['Timestamp'].dt.date).agg({
-            'Score_Global': 'mean'
-        }).reset_index()
-        df_viz.columns = ['Date', 'Score']
-        chart_title = f"Visibilité Globale - {selected_client}"
-    else:
-        df_viz = df_client[df_client['Mot_Cle'] == selected_question].copy()
-        df_viz['Date'] = df_viz['Timestamp'].dt.date
-        df_viz = df_viz[['Date', 'Score_Global']]
-        df_viz.columns = ['Date', 'Score']
-        chart_title = f"Visibilité : {selected_question}"
+    direct_hit = (df_c['Score_Global'] >= 50).sum() / len(df_c) * 100
+    c4.metric("% Citation Directe", f"{direct_hit:.0f}%")
 
-    # --- KPIs ---
-    col1, col2, col3 = st.columns(3)
-    
-    last_score = df_viz['Score'].iloc[-1] if not df_viz.empty else 0
-    prev_score = df_viz['Score'].iloc[-2] if len(df_viz) > 1 else last_score
-    delta = last_score - prev_score
-    
-    col1.metric("GEO Score Actuel", f"{last_score:.1f}/100", f"{delta:.1f}")
-    col2.metric("Nb de Tests", len(df_client))
-    col3.metric("Moteur Leader", "Perplexity") 
-
-    # --- GRAPHIQUE ---
-    st.subheader("📈 Évolution de la Visibilité")
-    fig = px.line(df_viz, x='Date', y='Score', title=chart_title, markers=True)
-    fig.update_layout(yaxis_range=[0, 105], template="plotly_white")
-    fig.update_traces(line_color='#4F46E5', line_width=3)
-    st.plotly_chart(fig, use_container_width=True)
-
-    # --- TABLEAU RECENT ---
-    st.subheader("Derniers Logs")
-    st.dataframe(df_client.sort_values('Timestamp', ascending=False).head(10), use_container_width=True)
+    # Graphique Evolution
+    st.subheader("📈 Évolution temporelle du Score Global")
+    df_trend = df_c.groupby(df_c['Timestamp'].dt.date)['Score_Global'].mean().reset_index()
+    fig_trend = px.line(df_trend, x='Timestamp', y='Score_Global', markers=True, line_shape="spline")
+    fig_trend.update_layout(yaxis_range=[0, 105], template="plotly_white")
+    st.plotly_chart(fig_trend, use_container_width=True)
 
 with tab2:
-    st.header("Comment est calculé le Score ?")
-    st.markdown("""
-    Le **GEO Score** est calculé sur **100 points** pour chaque réponse d'IA.
+    st.subheader("🤖 Perplexity vs Gemini")
     
-    | Critère | Points | Condition |
-    | :--- | :---: | :--- |
-    | **Visibilité Directe** | **50 pts** | L'IA cite votre site officiel en source. |
-    | *Visibilité Indirecte* | *20 pts* | L'IA cite un partenaire média (si site officiel absent). |
-    | **Ranking** | **30 pts** | Votre lien apparaît dans le **TOP 3** des sources. |
-    | **Sémantique** | **20 pts** | L'IA utilise vos "Mots-Clés Signatures". |
+    col_a, col_b = st.columns(2)
     
-    Un score > **80/100** indique une domination sémantique totale.
-    """)
+    # Bar chart de comparaison par Mot Clé
+    df_ia = df_c.groupby('Mot_Cle')[['Score_PPLX', 'Score_GEM']].last().reset_index()
+    fig_ia = go.Figure(data=[
+        go.Bar(name='Perplexity', x=df_ia['Mot_Cle'], y=df_ia['Score_PPLX'], marker_color='#4F46E5'),
+        go.Bar(name='Gemini', x=df_ia['Mot_Cle'], y=df_ia['Score_GEM'], marker_color='#10B981')
+    ])
+    fig_ia.update_layout(barmode='group', template="plotly_white", yaxis_range=[0, 105])
+    st.plotly_chart(fig_ia, use_container_width=True)
+
+with tab3:
+    st.subheader("🔍 Analyse détaillée des réponses")
+    
+    # Sélecteur de question
+    q_list = df_c['Mot_Cle'].unique()
+    sel_q = st.selectbox("Sélectionnez une question pour voir les preuves :", q_list)
+    
+    last_entry = df_c[df_c['Mot_Cle'] == sel_q].iloc[0]
+    
+    col_pplx, col_gem = st.columns(2)
+    
+    with col_pplx:
+        st.markdown(f"### ⚡ Perplexity (Score: {last_entry['Score_PPLX']})")
+        st.markdown(f"<div class='reponse-ia'>{last_entry['Texte_PPLX']}</div>", unsafe_allow_html=True)
+        
+    with col_gem:
+        st.markdown(f"### ♊ Gemini (Score: {last_entry['Score_GEM']})")
+        st.markdown(f"<div class='reponse-ia'>{last_entry['Texte_GEM']}</div>", unsafe_allow_html=True)
+
+    st.divider()
+    st.write("**Détails du calcul :**", last_entry['Details_Calcul'])
