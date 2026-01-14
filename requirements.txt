@@ -1,9 +1,7 @@
-streamlit
+gspread
+oauth2client
+google-generativeai
+requests
 pandas
 plotly
-gspread
-google-auth
-google-generativeai
-mistralai
-requests
-openai
+streamlit
