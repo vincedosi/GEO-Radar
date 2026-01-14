@@ -9,8 +9,10 @@ import google.generativeai as genai
 from mistralai import Mistral
 
 # CONFIGURATION
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
 def get_google_client():
     """Connexion sécurisée via la variable d'environnement JSON"""
     json_str = os.getenv("GOOGLE_JSON_KEY")
@@ -169,4 +171,5 @@ def main():
         print("✅ Logs mis à jour !")
 
 if __name__ == "__main__":
+
     main()
