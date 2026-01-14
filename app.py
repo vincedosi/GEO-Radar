@@ -39,7 +39,11 @@ def get_data():
         # Fallback pour local si pas dans toml (déconseillé mais utile pour debug)
         return pd.DataFrame()
         
-    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+    # À vérifier/modifier dans monitor.py et app.py
+    scope = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+    ]
     creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     client = gspread.authorize(creds)
     
@@ -130,4 +134,5 @@ with tab2:
     | **Sémantique** | **20 pts** | L'IA utilise vos "Mots-Clés Signatures". |
     
     Un score > **80/100** indique une domination sémantique totale (Authoritative Source).
+
     """)
