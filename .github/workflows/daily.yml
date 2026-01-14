@@ -1,0 +1,31 @@
+name: Daily GEO Scan
+
+on:
+  schedule:
+    - cron: '0 8 * * *'  # 08:00 UTC tous les jours
+  workflow_dispatch:      # Permet de lancer manuellement le bouton "Run"
+
+jobs:
+  run-monitor:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+
+    - name: Run Monitor Script
+      env:
+        GOOGLE_JSON_KEY: ${{ secrets.GOOGLE_JSON_KEY }}
+        PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+      run: python monitor.py
