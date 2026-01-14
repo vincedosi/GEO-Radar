@@ -637,13 +637,14 @@ with tab1:
                 'concurrent': '🔴 Concurrent'
             })
             
+            max_total = int(display_df['total'].max()) if len(display_df) > 0 else 10
             st.dataframe(
                 display_df[['source', 'total', 'pplx', 'gem', 'Type']].head(20),
                 use_container_width=True,
                 hide_index=True,
                 column_config={
                     "source": st.column_config.TextColumn("Source", width="large"),
-                    "total": st.column_config.ProgressColumn("Total", min_value=0, max_value=display_df['total'].max(), format="%d"),
+                    "total": st.column_config.ProgressColumn("Total", min_value=0, max_value=max_total, format="%d"),
                     "pplx": st.column_config.NumberColumn("Perplexity", format="%d"),
                     "gem": st.column_config.NumberColumn("Gemini", format="%d"),
                     "Type": st.column_config.TextColumn("Type")
