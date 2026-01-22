@@ -1,9 +1,10 @@
-gspread
-oauth2client
-google-generativeai
-requests
+streamlit>=1.32.0
 pandas
 plotly
-streamlit
+gspread
 google-auth
+google-auth-oauthlib
+google-generativeai
 reportlab
+oauth2client
+
