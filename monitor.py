@@ -1,3 +1,4 @@
+import streamlit as st
 import gspread
 import json
 import os
@@ -10,7 +11,7 @@ import requests
 
 # 1. CONNEXION GOOGLE SHEETS
 def connect_sheets():
-    creds_dict = json.loads(os.environ["GOOGLE_JSON_KEY"])
+    creds_dict = json.loads(st.secrets["GOOGLE_JSON_KEY"])
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     return gspread.authorize(creds)
@@ -32,14 +33,14 @@ def ask_ai_advanced(engine, question, url_cible):
             "model": "sonar",
             "messages": [{"role": "system", "content": "Tu es un auditeur SEO."}, {"role": "user", "content": prompt}]
         }
-        headers = {"Authorization": f"Bearer {os.environ['PERPLEXITY_API_KEY']}", "Content-Type": "application/json"}
+        headers = {"Authorization": f"Bearer {st.secrets['PERPLEXITY_API_KEY']}", "Content-Type": "application/json"}
         try:
             res = requests.post(url, json=payload, headers=headers).json()
             return res['choices'][0]['message']['content']
         except: return "Erreur Perplexity"
     
     else: # Gemini
-        genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
         model = genai.GenerativeModel('gemini-1.5-flash')
         try:
             return model.generate_content(prompt).text
@@ -85,6 +86,9 @@ def calculate_geo_score(answer, url_cible, partenaires, mots_signatures):
 
 # 5. MAIN
 def main():
+    st.title("🛰️ GEO-Radar Monitor")
+    st.write("Surveillance en cours...")
+    
     client = connect_sheets()
     sh = client.open("GEO-Radar_DATA")
     config_data = sh.worksheet("CONFIG_CIBLES").get_all_records()
@@ -93,6 +97,8 @@ def main():
     for row in config_data:
         q = row['Mot_Cle']
         target = row['URL_Cible']
+        
+        st.write(f"🔍 Analyse: {q}")
         
         ans_pplx = ask_ai_advanced("perplexity", q, target)
         ans_gem = ask_ai_advanced("gemini", q, target)
@@ -108,11 +114,11 @@ def main():
             row['Client'], q, (s_pplx + s_gem) / 2, s_pplx, s_gem,
             f"PPLX: {d_pplx} / GEM: {d_gem}",
             ans_pplx, ans_gem,
-            f"PPLX: {meta_p['sources']} | GEM: {meta_g['sources']}", # Col J: Sources
-            max(int(meta_p['reco']), int(meta_g['reco'])),         # Col K: Reco
-            meta_p['concurrent'] if s_pplx < 50 else "N/A"         # Col L: Concurrent
+            f"PPLX: {meta_p['sources']} | GEM: {meta_g['sources']}",
+            max(int(meta_p['reco']), int(meta_g['reco'])),
+            meta_p['concurrent'] if s_pplx < 50 else "N/A"
         ])
-        print(f"✅ Scan fini pour : {q}")
+        st.success(f"✅ Scan fini pour : {q}")
         time.sleep(2)
 
 if __name__ == "__main__":
