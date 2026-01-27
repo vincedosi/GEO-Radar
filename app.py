@@ -1045,7 +1045,8 @@ with tab2:
     avg_score = df_client['Score_Global'].mean() if len(df_client) > 0 else 0
     avg_pplx = df_client['Score_PPLX'].mean() if len(df_client) > 0 else 0
     avg_gem = df_client['Score_GEM'].mean() if len(df_client) > 0 else 0
-    avg_reco = df_client['Note_Recommandation'].astype(float).mean() if len(df_client) > 0 and 'Note_Recommandation' in df_client.columns else 0
+    avg_reco = pd.to_numeric(df_client['Note_Recommandation'], errors='coerce').mean() if len(df_client) > 0 and 'Note_Recommandation' in df_client.columns else 0
+    avg_reco = avg_reco if pd.notna(avg_reco) else 0
     
     with col1:
         st.metric("Score GEO Global", f"{avg_score:.0f}%", help="Moyenne des scores de visibilité sur toutes les requêtes")
