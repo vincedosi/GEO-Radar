@@ -285,6 +285,17 @@ st.markdown("""
 # 3. FONCTIONS UTILITAIRES
 # =============================================================================
 
+def _convert_attrdict(obj):
+    """Convertit récursivement un AttrDict en dict standard"""
+    if hasattr(obj, 'to_dict'):
+        return obj.to_dict()
+    elif hasattr(obj, 'keys'):
+        return {k: _convert_attrdict(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_convert_attrdict(item) for item in obj]
+    else:
+        return obj
+
 @st.cache_resource(ttl=600)
 def get_data():
     """Charge les données depuis Google Sheets"""
@@ -293,7 +304,12 @@ def get_data():
     if isinstance(raw, str):
         creds_dict = json.loads(raw)
     else:
-        creds_dict = dict(raw)
+        creds_dict = _convert_attrdict(raw)
+
+    # Corrige les sauts de ligne dans la clé privée si nécessaire
+    if "private_key" in creds_dict and isinstance(creds_dict["private_key"], str):
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     client = gspread.authorize(creds)
