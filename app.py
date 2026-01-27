@@ -288,7 +288,13 @@ st.markdown("""
 @st.cache_resource(ttl=600)
 def get_data():
     """Charge les données depuis Google Sheets"""
-    creds_dict = json.loads(st.secrets["GOOGLE_JSON_KEY"])
+    raw = st.secrets["GOOGLE_JSON_KEY"]
+    # Gère les deux cas : chaîne JSON ou dictionnaire (AttrDict de Streamlit)
+    if isinstance(raw, str):
+        creds_dict = json.loads(raw)
+    else:
+        # Convertir AttrDict en dict standard pour éviter les problèmes
+        creds_dict = dict(raw)
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     client = gspread.authorize(creds)
