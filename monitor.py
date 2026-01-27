@@ -18,7 +18,7 @@ def get_secret(key):
         import streamlit as st
         if key in st.secrets:
             return st.secrets[key]
-    except ImportError:
+    except (ImportError, Exception):
         pass
     return None
 
@@ -27,14 +27,14 @@ def connect_sheets():
     if not raw_creds:
         raise ValueError("ERREUR: Le secret GOOGLE_JSON_KEY est introuvable.")
 
-    # Gestion de l'erreur JSON rencontrée précédemment
+    # Correction : On ne JSON.LOAD que si c'est du texte (GitHub Actions)
+    # Si c'est déjà un dictionnaire (Streamlit), on l'utilise tel quel
     if isinstance(raw_creds, str):
         try:
-            # On nettoie les éventuels guillemets de début/fin si présents
             clean_creds = raw_creds.strip().strip("'").strip('"')
             creds_dict = json.loads(clean_creds)
         except json.JSONDecodeError as e:
-            print(f"❌ Erreur critique : Le secret GOOGLE_JSON_KEY n'est pas un JSON valide. {e}")
+            print(f"❌ Erreur critique format JSON : {e}")
             raise
     else:
         creds_dict = raw_creds
@@ -55,7 +55,6 @@ def ask_ai_advanced(engine, question, url_cible):
     TOP_CONCURRENT: [domaine du concurrent principal]
     """
 
-    # --- PERPLEXITY ---
     if engine == "perplexity":
         api_key = get_secret('PERPLEXITY_API_KEY')
         if not api_key: return "Erreur: clé PPLX manquante"
@@ -69,7 +68,6 @@ def ask_ai_advanced(engine, question, url_cible):
             return res.json()['choices'][0]['message']['content']
         except Exception as e: return f"Erreur Perplexity: {str(e)}"
 
-    # --- GEMINI ---
     elif engine == "gemini":
         api_key = get_secret("GEMINI_API_KEY")
         if not api_key: return "Erreur: clé Gemini manquante"
@@ -80,7 +78,6 @@ def ask_ai_advanced(engine, question, url_cible):
             return res.json()['candidates'][0]['content']['parts'][0]['text']
         except Exception as e: return f"Erreur Gemini: {str(e)}"
 
-    # --- CHATGPT ---
     elif engine == "chatgpt":
         api_key = get_secret("OPENAI_API_KEY")
         if not api_key: return "Erreur: clé OpenAI manquante"
@@ -99,7 +96,6 @@ def ask_ai_advanced(engine, question, url_cible):
 # --- 3. PARSING & ANALYSE ---
 def parse_metadata(text):
     try:
-        # Regex plus souples pour capturer les données même si l'IA ajoute des espaces
         sources = re.findall(r"SOURCES:\s*\[?(.*?)\]?$", text, re.MULTILINE | re.IGNORECASE)
         reco = re.findall(r"RECO:\s*(\d)", text)
         concurrent = re.findall(r"TOP_CONCURRENT:\s*\[?(.*?)\]?$", text, re.MULTILINE | re.IGNORECASE)
@@ -114,26 +110,22 @@ def parse_metadata(text):
 
 def calculate_geo_score(answer, url_cible, partenaires, mots_signatures):
     if not answer or answer.startswith("Erreur"): return 0, "ERREUR"
-    
     score = 0
     details = []
     target_clean = url_cible.lower().replace("https://", "").replace("www.", "").strip("/")
 
-    # 1. Présence de l'URL cible
     if target_clean in answer.lower():
         score += 50
         details.append("OFFICIEL")
 
-    # 2. Présence des partenaires (on évite les listes vides)
     for p in [p.strip().lower() for p in partenaires if p.strip()]:
         p_clean = p.replace("https://", "").replace("www.", "")
         if p_clean in answer.lower():
-            if score < 50: # On n'ajoute que si la cible principale n'est pas déjà là
+            if score < 50:
                 score += 20
                 details.append(f"PARTENAIRE({p_clean})")
             break
 
-    # 3. Mots signatures
     found_mots = [m.strip() for m in mots_signatures if m.strip() and m.strip().lower() in answer.lower()]
     sem_score = min(len(found_mots) * 10, 30)
     if sem_score > 0:
@@ -152,9 +144,24 @@ def main():
         config_ws = sh.worksheet("CONFIG_CIBLES")
         log_ws = sh.worksheet("LOGS_RESULTATS")
         
-        config_data = config_ws.get_all_records()
+        # MÉTHODE 2 : Lecture manuelle pour éviter l'erreur de colonnes en doublon
+        all_rows = config_ws.get_all_values()
+        if not all_rows:
+            print("⚠️ Feuille CONFIG_CIBLES vide.")
+            return
+
+        headers = all_rows[0]
+        config_data = []
+        for row in all_rows[1:]:
+            # On mappe les headers aux valeurs, en ignorant les colonnes sans nom
+            record = {headers[i]: row[i] for i in range(len(headers)) if i < len(row) and headers[i].strip() != ""}
+            if any(record.values()):
+                config_data.append(record)
+        
+        print(f"✅ {len(config_data)} lignes chargées.")
+
     except Exception as e:
-        print(f"❌ Erreur de connexion Google Sheets: {e}")
+        print(f"❌ Erreur de configuration Google Sheets: {e}")
         return
 
     for row in config_data:
@@ -164,15 +171,12 @@ def main():
 
         print(f"🔍 Analyse : {q}")
 
-        # Requêtes
         ans_pplx = ask_ai_advanced("perplexity", q, target)
         ans_gem = ask_ai_advanced("gemini", q, target)
         ans_gpt = ask_ai_advanced("chatgpt", q, target)
 
-        # Parsing
         m_p, m_g, m_gpt = parse_metadata(ans_pplx), parse_metadata(ans_gem), parse_metadata(ans_gpt)
 
-        # Scores
         partenaires = str(row.get('URLs_Partenaires', "")).split(',')
         signatures = str(row.get('Mots_Signatures', "")).split(',')
         
@@ -180,18 +184,16 @@ def main():
         s_gem, d_gem = calculate_geo_score(ans_gem, target, partenaires, signatures)
         s_gpt, d_gpt = calculate_geo_score(ans_gpt, target, partenaires, signatures)
 
-        # Calcul Score Global
         scores_v = [s for s in [s_pplx, s_gem, s_gpt] if s >= 0]
         score_global = sum(scores_v) / len(scores_v) if scores_v else 0
 
-        # Écriture logs
         try:
             log_ws.append_row([
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 row.get('Client', 'Inconnu'), q, round(score_global, 1),
                 s_pplx, s_gem, s_gpt,
                 f"PPLX: {d_pplx} | GEM: {d_gem} | GPT: {d_gpt}",
-                ans_pplx[:500], ans_gem[:500], ans_gpt[:500], # On tronque un peu pour le log
+                ans_pplx[:500], ans_gem[:500], ans_gpt[:500],
                 f"P: {m_p['sources']} | G: {m_g['sources']} | T: {m_gpt['sources']}",
                 max(int(m_p['reco']), int(m_g['reco']), int(m_gpt['reco'])),
                 m_p['concurrent'] if s_pplx < 50 else "N/A"
@@ -200,7 +202,7 @@ def main():
         except Exception as e:
             print(f"❌ Erreur écriture Sheets: {e}")
 
-        time.sleep(2) # Anti-spam API
+        time.sleep(2)
 
     print("🎉 Terminé !")
 
