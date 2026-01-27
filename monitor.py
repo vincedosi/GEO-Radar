@@ -9,11 +9,11 @@ import requests
 
 # --- 1. RÉCUPÉRATION SÉCURISÉE DES SECRETS ---
 def get_secret(key):
-    # 1. Vérifier les variables d'environnement (GitHub Actions / Local)
+    # 1. Variables d'environnement (GitHub Actions / Local)
     value = os.environ.get(key)
     if value:
         return value
-    # 2. Vérifier Streamlit Secrets
+    # 2. Streamlit Secrets
     try:
         import streamlit as st
         if key in st.secrets:
@@ -27,14 +27,13 @@ def connect_sheets():
     if not raw_creds:
         raise ValueError("ERREUR: Le secret GOOGLE_JSON_KEY est introuvable.")
 
-    # Correction : On ne JSON.LOAD que si c'est du texte (GitHub Actions)
-    # Si c'est déjà un dictionnaire (Streamlit), on l'utilise tel quel
+    # FIX AUTH : Si c'est du texte (GitHub), on décode. Si c'est un dictionnaire (Streamlit), on garde.
     if isinstance(raw_creds, str):
         try:
             clean_creds = raw_creds.strip().strip("'").strip('"')
             creds_dict = json.loads(clean_creds)
         except json.JSONDecodeError as e:
-            print(f"❌ Erreur critique format JSON : {e}")
+            print(f"❌ Erreur format JSON : {e}")
             raise
     else:
         creds_dict = raw_creds
@@ -99,7 +98,6 @@ def parse_metadata(text):
         sources = re.findall(r"SOURCES:\s*\[?(.*?)\]?$", text, re.MULTILINE | re.IGNORECASE)
         reco = re.findall(r"RECO:\s*(\d)", text)
         concurrent = re.findall(r"TOP_CONCURRENT:\s*\[?(.*?)\]?$", text, re.MULTILINE | re.IGNORECASE)
-
         return {
             "sources": sources[0].strip() if sources else "N/A",
             "reco": reco[0] if reco else "1",
@@ -144,24 +142,24 @@ def main():
         config_ws = sh.worksheet("CONFIG_CIBLES")
         log_ws = sh.worksheet("LOGS_RESULTATS")
         
-        # MÉTHODE 2 : Lecture manuelle pour éviter l'erreur de colonnes en doublon
+        # FIX HEADER : On lit les valeurs brutes pour ignorer les colonnes vides/doublons
         all_rows = config_ws.get_all_values()
         if not all_rows:
             print("⚠️ Feuille CONFIG_CIBLES vide.")
             return
 
-        headers = all_rows[0]
+        headers = [h.strip() for h in all_rows[0]]
         config_data = []
         for row in all_rows[1:]:
-            # On mappe les headers aux valeurs, en ignorant les colonnes sans nom
-            record = {headers[i]: row[i] for i in range(len(headers)) if i < len(row) and headers[i].strip() != ""}
-            if any(record.values()):
+            # Crée un dictionnaire uniquement pour les colonnes ayant un nom
+            record = {headers[i]: row[i] for i in range(len(headers)) if i < len(row) and headers[i] != ""}
+            if any(record.values()): # Ignore les lignes totalement vides
                 config_data.append(record)
         
         print(f"✅ {len(config_data)} lignes chargées.")
 
     except Exception as e:
-        print(f"❌ Erreur de configuration Google Sheets: {e}")
+        print(f"❌ Erreur de connexion : {e}")
         return
 
     for row in config_data:
@@ -193,18 +191,18 @@ def main():
                 row.get('Client', 'Inconnu'), q, round(score_global, 1),
                 s_pplx, s_gem, s_gpt,
                 f"PPLX: {d_pplx} | GEM: {d_gem} | GPT: {d_gpt}",
-                ans_pplx[:500], ans_gem[:500], ans_gpt[:500],
+                ans_pplx[:1000], ans_gem[:1000], ans_gpt[:1000],
                 f"P: {m_p['sources']} | G: {m_g['sources']} | T: {m_gpt['sources']}",
                 max(int(m_p['reco']), int(m_g['reco']), int(m_gpt['reco'])),
                 m_p['concurrent'] if s_pplx < 50 else "N/A"
             ])
-            print(f"✅ Logged: {q} (Score: {score_global})")
+            print(f"✅ Terminé : {q} (Score: {score_global})")
         except Exception as e:
-            print(f"❌ Erreur écriture Sheets: {e}")
+            print(f"❌ Erreur écriture : {e}")
 
         time.sleep(2)
 
-    print("🎉 Terminé !")
+    print("🎉 Scan terminé avec succès !")
 
 if __name__ == "__main__":
     main()
