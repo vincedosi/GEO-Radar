@@ -9,11 +9,11 @@ import requests
 
 # --- 1. RÉCUPÉRATION SÉCURISÉE DES SECRETS ---
 def get_secret(key):
-    # 1. Variables d'environnement (GitHub Actions / Local)
+    # 1. Vérifier les variables d'environnement (GitHub Actions / Local)
     value = os.environ.get(key)
     if value:
         return value
-    # 2. Streamlit Secrets
+    # 2. Vérifier Streamlit Secrets (si exécuté sur Streamlit Cloud)
     try:
         import streamlit as st
         if key in st.secrets:
@@ -27,15 +27,17 @@ def connect_sheets():
     if not raw_creds:
         raise ValueError("ERREUR: Le secret GOOGLE_JSON_KEY est introuvable.")
 
-    # FIX AUTH : Si c'est du texte (GitHub), on décode. Si c'est un dictionnaire (Streamlit), on garde.
+    # FIX AUTH : Gère la différence entre GitHub (texte) et Streamlit (dictionnaire)
     if isinstance(raw_creds, str):
         try:
+            # Nettoyage des guillemets parasites souvent ajoutés par erreur
             clean_creds = raw_creds.strip().strip("'").strip('"')
             creds_dict = json.loads(clean_creds)
         except json.JSONDecodeError as e:
-            print(f"❌ Erreur format JSON : {e}")
+            print(f"❌ Erreur critique format JSON : {e}")
             raise
     else:
+        # Si c'est déjà un dictionnaire (Streamlit), on l'utilise tel quel
         creds_dict = raw_creds
 
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -98,6 +100,7 @@ def parse_metadata(text):
         sources = re.findall(r"SOURCES:\s*\[?(.*?)\]?$", text, re.MULTILINE | re.IGNORECASE)
         reco = re.findall(r"RECO:\s*(\d)", text)
         concurrent = re.findall(r"TOP_CONCURRENT:\s*\[?(.*?)\]?$", text, re.MULTILINE | re.IGNORECASE)
+
         return {
             "sources": sources[0].strip() if sources else "N/A",
             "reco": reco[0] if reco else "1",
@@ -112,10 +115,12 @@ def calculate_geo_score(answer, url_cible, partenaires, mots_signatures):
     details = []
     target_clean = url_cible.lower().replace("https://", "").replace("www.", "").strip("/")
 
+    # 1. Présence URL cible
     if target_clean in answer.lower():
         score += 50
         details.append("OFFICIEL")
 
+    # 2. Présence Partenaires
     for p in [p.strip().lower() for p in partenaires if p.strip()]:
         p_clean = p.replace("https://", "").replace("www.", "")
         if p_clean in answer.lower():
@@ -124,6 +129,7 @@ def calculate_geo_score(answer, url_cible, partenaires, mots_signatures):
                 details.append(f"PARTENAIRE({p_clean})")
             break
 
+    # 3. Mots signatures
     found_mots = [m.strip() for m in mots_signatures if m.strip() and m.strip().lower() in answer.lower()]
     sem_score = min(len(found_mots) * 10, 30)
     if sem_score > 0:
@@ -142,39 +148,50 @@ def main():
         config_ws = sh.worksheet("CONFIG_CIBLES")
         log_ws = sh.worksheet("LOGS_RESULTATS")
         
-        # FIX HEADER : On lit les valeurs brutes pour ignorer les colonnes vides/doublons
+        # --- FIX MAJEUR ICI ---
+        # Au lieu de config_ws.get_all_records() qui plante s'il y a des colonnes vides,
+        # on lit tout manuellement :
         all_rows = config_ws.get_all_values()
+        
         if not all_rows:
             print("⚠️ Feuille CONFIG_CIBLES vide.")
             return
 
         headers = [h.strip() for h in all_rows[0]]
         config_data = []
+        
         for row in all_rows[1:]:
-            # Crée un dictionnaire uniquement pour les colonnes ayant un nom
+            # On crée le dictionnaire en ignorant les headers vides ("")
+            # Cela empêche l'erreur "duplicates: ['']"
             record = {headers[i]: row[i] for i in range(len(headers)) if i < len(row) and headers[i] != ""}
-            if any(record.values()): # Ignore les lignes totalement vides
+            
+            # On vérifie que la ligne n'est pas complètement vide
+            if any(record.values()):
                 config_data.append(record)
         
-        print(f"✅ {len(config_data)} lignes chargées.")
+        print(f"✅ {len(config_data)} lignes chargées avec succès.")
 
     except Exception as e:
-        print(f"❌ Erreur de connexion : {e}")
+        print(f"❌ Erreur de connexion/lecture Google Sheets : {e}")
         return
 
     for row in config_data:
         q = row.get('Mot_Cle')
         target = row.get('URL_Cible')
+        
+        # Si la ligne est incomplète, on passe
         if not q or not target: continue
 
         print(f"🔍 Analyse : {q}")
 
+        # Appel des IA
         ans_pplx = ask_ai_advanced("perplexity", q, target)
         ans_gem = ask_ai_advanced("gemini", q, target)
         ans_gpt = ask_ai_advanced("chatgpt", q, target)
 
         m_p, m_g, m_gpt = parse_metadata(ans_pplx), parse_metadata(ans_gem), parse_metadata(ans_gpt)
 
+        # Calcul des scores
         partenaires = str(row.get('URLs_Partenaires', "")).split(',')
         signatures = str(row.get('Mots_Signatures', "")).split(',')
         
@@ -185,6 +202,7 @@ def main():
         scores_v = [s for s in [s_pplx, s_gem, s_gpt] if s >= 0]
         score_global = sum(scores_v) / len(scores_v) if scores_v else 0
 
+        # Sauvegarde
         try:
             log_ws.append_row([
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -198,7 +216,7 @@ def main():
             ])
             print(f"✅ Terminé : {q} (Score: {score_global})")
         except Exception as e:
-            print(f"❌ Erreur écriture : {e}")
+            print(f"❌ Erreur écriture Sheets: {e}")
 
         time.sleep(2)
 
