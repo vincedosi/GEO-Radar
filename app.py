@@ -518,7 +518,7 @@ def highlight_text_advanced(text, config, all_sources=None):
         for src in all_sources:
             if classify_source(src, config) == "concurrent":
                 pattern = re.compile(re.escape(src), re.IGNORECASE)
-                result = result.replace(src, f'<span class="highlight-concurrent">{src}</span>')
+                result = pattern.sub(f'<span class="highlight-concurrent">{src}</span>', result)
     
     return result
 
