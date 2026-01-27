@@ -285,30 +285,44 @@ st.markdown("""
 # 3. FONCTIONS UTILITAIRES
 # =============================================================================
 
-def _convert_attrdict(obj):
-    """Convertit récursivement un AttrDict en dict standard"""
-    if hasattr(obj, 'to_dict'):
-        return obj.to_dict()
-    elif hasattr(obj, 'keys'):
-        return {k: _convert_attrdict(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [_convert_attrdict(item) for item in obj]
-    else:
+def _to_dict(obj):
+    """Convertit un AttrDict Streamlit en dict Python standard via JSON"""
+    try:
+        # Méthode la plus fiable : sérialiser en JSON puis désérialiser
+        return json.loads(json.dumps(dict(obj)))
+    except (TypeError, ValueError):
+        # Fallback : conversion manuelle récursive
+        if hasattr(obj, 'keys'):
+            return {k: _to_dict(v) if hasattr(v, 'keys') else v for k, v in obj.items()}
         return obj
+
+def _fix_private_key(creds):
+    """Corrige le format PEM de la clé privée"""
+    if "private_key" in creds and isinstance(creds["private_key"], str):
+        pk = creds["private_key"]
+        # Remplace les séquences échappées par de vrais sauts de ligne
+        pk = pk.replace("\\n", "\n").replace("\\\\n", "\n")
+        # S'assure que le format PEM est correct
+        if "-----BEGIN" in pk and "\n" not in pk.split("-----")[2][:50]:
+            # La clé n'a pas de vrais sauts de ligne, on les ajoute
+            pk = pk.replace("-----BEGIN PRIVATE KEY-----", "-----BEGIN PRIVATE KEY-----\n")
+            pk = pk.replace("-----END PRIVATE KEY-----", "\n-----END PRIVATE KEY-----\n")
+        creds["private_key"] = pk
+    return creds
 
 @st.cache_resource(ttl=600)
 def get_data():
     """Charge les données depuis Google Sheets"""
     raw = st.secrets["GOOGLE_JSON_KEY"]
+
     # Gère les deux cas : chaîne JSON ou dict déjà parsé (AttrDict Streamlit)
     if isinstance(raw, str):
         creds_dict = json.loads(raw)
     else:
-        creds_dict = _convert_attrdict(raw)
+        creds_dict = _to_dict(raw)
 
-    # Corrige les sauts de ligne dans la clé privée si nécessaire
-    if "private_key" in creds_dict and isinstance(creds_dict["private_key"], str):
-        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+    # Corrige le format de la clé privée
+    creds_dict = _fix_private_key(creds_dict)
 
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
