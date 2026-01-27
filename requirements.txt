@@ -7,4 +7,6 @@ google-auth-oauthlib
 google-generativeai
 reportlab
 oauth2client
+requests
+
 
