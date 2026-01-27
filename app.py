@@ -328,8 +328,36 @@ def get_data():
     creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     client = gspread.authorize(creds)
     sh = client.open("GEO-Radar_DATA")
-    df = pd.DataFrame(sh.worksheet("LOGS_RESULTATS").get_all_records())
-    df['Timestamp'] = pd.to_datetime(df['Timestamp'])
+    ws = sh.worksheet("LOGS_RESULTATS")
+
+    # Récupère toutes les valeurs et crée le DataFrame manuellement
+    # pour gérer les colonnes vides ou en double
+    all_values = ws.get_all_values()
+    if not all_values:
+        return pd.DataFrame()
+
+    headers = all_values[0]
+    data = all_values[1:]
+
+    # Filtre les colonnes vides et renomme les doublons
+    clean_headers = []
+    seen = {}
+    for i, h in enumerate(headers):
+        if not h or h.strip() == '':
+            continue  # Ignore les colonnes sans en-tête
+        if h in seen:
+            seen[h] += 1
+            clean_headers.append((i, f"{h}_{seen[h]}"))
+        else:
+            seen[h] = 0
+            clean_headers.append((i, h))
+
+    # Crée le DataFrame avec seulement les colonnes valides
+    df_data = [[row[i] for i, _ in clean_headers] for row in data]
+    df = pd.DataFrame(df_data, columns=[h for _, h in clean_headers])
+
+    if 'Timestamp' in df.columns:
+        df['Timestamp'] = pd.to_datetime(df['Timestamp'])
     return df
 
 def get_client_config(client_name):
