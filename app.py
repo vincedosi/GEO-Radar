@@ -869,7 +869,10 @@ with tab1:
                 height=350,
                 margin=dict(l=20, r=20, t=30, b=20),
                 showlegend=True,
-                legend=dict(orientation="h", y=-0.1)
+                legend=dict(orientation="h", y=-0.1),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                font=dict(color='#1e293b')
             )
             fig_pie.update_traces(textposition='inside', textinfo='percent+label')
             st.plotly_chart(fig_pie, use_container_width=True)
@@ -898,7 +901,10 @@ with tab1:
                 margin=dict(l=20, r=20, t=10, b=20),
                 yaxis=dict(autorange="reversed"),
                 xaxis_title="Nombre de citations",
-                showlegend=False
+                showlegend=False,
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                font=dict(color='#1e293b')
             )
             st.plotly_chart(fig_bar, use_container_width=True)
             
@@ -1015,6 +1021,9 @@ with tab2:
             legend=dict(orientation="h", y=1.1),
             hovermode='x unified',
             yaxis_title="Score (%)",
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='white',
+            font=dict(color='#1e293b'),
             xaxis_title="Période"
         )
         st.plotly_chart(fig, use_container_width=True)
@@ -1084,7 +1093,10 @@ with tab3:
                     height=400,
                     yaxis=dict(autorange="reversed"),
                     xaxis_title="Nombre de citations",
-                    margin=dict(l=20, r=20, t=10, b=40)
+                    margin=dict(l=20, r=20, t=10, b=40),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    font=dict(color='#1e293b')
                 )
                 st.plotly_chart(fig_conc, use_container_width=True)
                 
@@ -1114,7 +1126,10 @@ with tab3:
                     height=400,
                     xaxis_tickangle=-45,
                     margin=dict(l=20, r=20, t=10, b=100),
-                    legend=dict(orientation="h", y=1.1)
+                    legend=dict(orientation="h", y=1.1),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    font=dict(color='#1e293b')
                 )
                 st.plotly_chart(fig_compare, use_container_width=True)
                 
