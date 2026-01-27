@@ -1,122 +1,122 @@
-# CLAUDE.md - GEO-Radar Project Guide
+# CLAUDE.md - Guide du Projet GEO-Radar
 
-## Project Overview
+## Aperçu du Projet
 
-GEO-Radar is an **AI Visibility Audit Tool** that monitors how websites are cited by AI engines (Perplexity and Google Gemini) in response to search queries. It helps clients track their online visibility in AI-generated responses, measure citation frequency, analyze competitive positioning, and generate detailed reports.
+GEO-Radar est un **Outil d'Audit de Visibilité IA** qui surveille comment les sites web sont cités par les moteurs IA (Perplexity et Google Gemini) en réponse aux requêtes de recherche. Il aide les clients à suivre leur visibilité en ligne dans les réponses générées par l'IA, mesurer la fréquence des citations, analyser le positionnement concurrentiel et générer des rapports détaillés.
 
-**Primary Use Case**: SEO professionals, content strategists, and marketing teams tracking how AI systems reference their websites.
+**Cas d'usage principal** : Professionnels du SEO, stratèges de contenu et équipes marketing suivant comment les systèmes IA référencent leurs sites web.
 
-**Language**: The application UI and code comments are primarily in French.
+**Langue** : L'interface utilisateur et les commentaires du code sont principalement en français.
 
-## Codebase Structure
+## Structure du Code
 
 ```
 GEO-Radar/
-├── app.py                 # Main Streamlit dashboard application (~1500 lines)
-├── monitor.py             # Automated monitoring/scanning script (~125 lines)
-├── requirements.txt       # Python dependencies
-├── README.md              # Basic project description
-├── .gitignore             # Git ignore configuration
+├── app.py                 # Application principale du tableau de bord Streamlit (~1500 lignes)
+├── monitor.py             # Script de surveillance/scan automatisé (~125 lignes)
+├── requirements.txt       # Dépendances Python
+├── README.md              # Description basique du projet
+├── .gitignore             # Configuration Git ignore
 ├── .devcontainer/
-│   └── devcontainer.json  # GitHub Codespaces/VS Code dev container config
+│   └── devcontainer.json  # Config GitHub Codespaces/VS Code dev container
 └── .github/
     └── workflows/
-        └── daily.yml      # GitHub Actions daily scan workflow
+        └── daily.yml      # Workflow GitHub Actions pour scan quotidien
 ```
 
-## Key Files
+## Fichiers Clés
 
-### app.py - Dashboard Application
-The main Streamlit web application providing:
-- **Multi-tab interface**: Sources & Visibility, Evolution, Competition, Evidence, Export
-- **Data visualization**: KPI cards, charts via Plotly
-- **Client configuration**: Hard-coded configs for SPF, Conforama, IKEA clients
-- **PDF report generation**: Uses ReportLab for export functionality
-- **Google Sheets integration**: Reads from `GEO-Radar_DATA` spreadsheet
+### app.py - Application Tableau de Bord
+L'application web Streamlit principale fournissant :
+- **Interface multi-onglets** : Sources & Visibilité, Évolution, Concurrence, Preuves, Export
+- **Visualisation des données** : Cartes KPI, graphiques via Plotly
+- **Configuration clients** : Configs codées en dur pour les clients SPF, Conforama, IKEA
+- **Génération de rapports PDF** : Utilise ReportLab pour l'export
+- **Intégration Google Sheets** : Lecture depuis le classeur `GEO-Radar_DATA`
 
-**Key Functions**:
-- `get_data()`: Fetches and caches Google Sheets data (10-min TTL)
-- `analyze_all_sources()`: Classifies cited sources as client/partner/competitor
-- `calculate_visibility_metrics()`: Computes citation rates and voice share
-- `generate_recommendations()`: Auto-generates strategic recommendations
-- `generate_pdf_report()`: Creates exportable PDF reports
-- `highlight_text_advanced()`: HTML highlighting for text analysis
+**Fonctions Clés** :
+- `get_data()` : Récupère et met en cache les données Google Sheets (TTL 10 min)
+- `analyze_all_sources()` : Classifie les sources citées comme client/partenaire/concurrent
+- `calculate_visibility_metrics()` : Calcule les taux de citation et part de voix
+- `generate_recommendations()` : Génère automatiquement des recommandations stratégiques
+- `generate_pdf_report()` : Crée des rapports PDF exportables
+- `highlight_text_advanced()` : Surlignage HTML pour l'analyse de texte
 
-### monitor.py - Automated Scanner
-Lightweight script for scheduled scans:
-- Queries Perplexity API (`sonar` model) and Google Gemini API (`gemini-1.5-flash`)
-- Calculates GEO visibility scores (0-100 scale)
-- Logs results to Google Sheets `LOGS_RESULTATS` worksheet
+### monitor.py - Scanner Automatisé
+Script léger pour les scans programmés :
+- Interroge l'API Perplexity (modèle `sonar`) et l'API Google Gemini (`gemini-1.5-flash`)
+- Calcule les scores de visibilité GEO (échelle 0-100)
+- Enregistre les résultats dans la feuille Google Sheets `LOGS_RESULTATS`
 
-**Key Functions**:
-- `connect_sheets()`: OAuth2 authentication to Google Sheets
-- `ask_ai_advanced()`: Queries AI engines with structured prompts
-- `parse_metadata()`: Extracts sources, recommendation scores, competitors
-- `calculate_geo_score()`: Scores based on official mention (50pts), partner (20pts), keywords (up to 30pts)
+**Fonctions Clés** :
+- `connect_sheets()` : Authentification OAuth2 vers Google Sheets
+- `ask_ai_advanced()` : Interroge les moteurs IA avec des prompts structurés
+- `parse_metadata()` : Extrait sources, scores de recommandation, concurrents
+- `calculate_geo_score()` : Score basé sur mention officielle (50pts), partenaire (20pts), mots-clés (jusqu'à 30pts)
 
-## Technology Stack
+## Stack Technologique
 
-| Technology | Purpose |
-|------------|---------|
-| Streamlit | Web UI framework |
-| Pandas | Data manipulation |
-| Plotly | Interactive visualizations |
-| gspread | Google Sheets API client |
-| google-generativeai | Gemini API SDK |
-| ReportLab | PDF generation |
-| requests | HTTP client (Perplexity API) |
+| Technologie | Utilisation |
+|-------------|-------------|
+| Streamlit | Framework UI web |
+| Pandas | Manipulation de données |
+| Plotly | Visualisations interactives |
+| gspread | Client API Google Sheets |
+| google-generativeai | SDK API Gemini |
+| ReportLab | Génération PDF |
+| requests | Client HTTP (API Perplexity) |
 
-## External Services
+## Services Externes
 
-- **Google Sheets API**: Data storage (`GEO-Radar_DATA` spreadsheet)
-- **Google Drive API**: File permissions
-- **Perplexity AI API**: AI responses via Sonar model
-- **Google Gemini API**: AI responses via gemini-1.5-flash
+- **API Google Sheets** : Stockage des données (classeur `GEO-Radar_DATA`)
+- **API Google Drive** : Permissions des fichiers
+- **API Perplexity AI** : Réponses IA via modèle Sonar
+- **API Google Gemini** : Réponses IA via gemini-1.5-flash
 
-## Development Workflows
+## Workflows de Développement
 
-### Local Development
+### Développement Local
 ```bash
-# Install dependencies
+# Installer les dépendances
 pip install -r requirements.txt
 
-# Run the dashboard
+# Lancer le tableau de bord
 streamlit run app.py --server.port 8501
 
-# Run the monitor manually (requires secrets configured)
+# Lancer le monitor manuellement (nécessite les secrets configurés)
 python monitor.py
 ```
 
 ### GitHub Codespaces / Dev Container
-The `.devcontainer/devcontainer.json` configures:
-- Python 3.11 environment
-- Auto-installs requirements
-- Starts Streamlit on port 8501 automatically
-- CORS/CSRF disabled for development
+Le fichier `.devcontainer/devcontainer.json` configure :
+- Environnement Python 3.11
+- Installation automatique des requirements
+- Démarrage automatique de Streamlit sur le port 8501
+- CORS/CSRF désactivés pour le développement
 
-### Automated Scanning
-The GitHub Actions workflow (`.github/workflows/daily.yml`):
-- Runs daily at 08:00 UTC
-- Can be triggered manually via workflow_dispatch
-- Executes `monitor.py` with secrets from GitHub
+### Scan Automatisé
+Le workflow GitHub Actions (`.github/workflows/daily.yml`) :
+- S'exécute quotidiennement à 08:00 UTC
+- Peut être déclenché manuellement via workflow_dispatch
+- Exécute `monitor.py` avec les secrets GitHub
 
-## Required Secrets/Environment Variables
+## Secrets/Variables d'Environnement Requis
 
 | Secret | Description |
 |--------|-------------|
-| `GOOGLE_JSON_KEY` | Service account JSON for Google Sheets/Drive API |
-| `PERPLEXITY_API_KEY` | Perplexity AI API key |
-| `GEMINI_API_KEY` | Google Gemini API key |
-| `MISTRAL_API_KEY` | Mistral API key (configured but not actively used) |
+| `GOOGLE_JSON_KEY` | JSON du compte de service pour API Google Sheets/Drive |
+| `PERPLEXITY_API_KEY` | Clé API Perplexity AI |
+| `GEMINI_API_KEY` | Clé API Google Gemini |
+| `MISTRAL_API_KEY` | Clé API Mistral (configurée mais pas utilisée activement) |
 
-Secrets are accessed via `st.secrets` (Streamlit secrets management) or environment variables in GitHub Actions.
+Les secrets sont accessibles via `st.secrets` (gestion des secrets Streamlit) ou variables d'environnement dans GitHub Actions.
 
-## Data Flow Architecture
+## Architecture du Flux de Données
 
 ```
 ┌─────────────────────┐
-│  GitHub Actions     │ (Daily at 08:00 UTC)
-│  runs monitor.py    │
+│  GitHub Actions     │ (Quotidien à 08:00 UTC)
+│  exécute monitor.py │
 └──────────┬──────────┘
            │
     ┌──────┴──────┐
@@ -129,85 +129,85 @@ Secrets are accessed via `st.secrets` (Streamlit secrets management) or environm
     └─────┬──────┘
           │
     ┌─────▼─────────┐
-    │ Google Sheets │ (LOGS_RESULTATS worksheet)
+    │ Google Sheets │ (feuille LOGS_RESULTATS)
     └─────┬─────────┘
           │
     ┌─────▼─────────┐
-    │  Streamlit    │ (app.py Dashboard)
+    │  Streamlit    │ (Tableau de bord app.py)
     │  Dashboard    │
     └───────────────┘
 ```
 
-## Key Conventions
+## Conventions Clés
 
-### Code Style
-- **Language**: French for UI text, comments, and variable names related to business logic
-- **Imports**: Standard library first, then third-party packages
-- **Configuration**: Hard-coded client configs in `CONFIG_CLIENTS` dict at top of app.py
-- **Error handling**: Try/except blocks with fallback values (e.g., "Erreur Perplexity")
-- **Caching**: Use `@st.cache_data(ttl=600)` for data fetching functions
+### Style de Code
+- **Langue** : Français pour les textes UI, commentaires et noms de variables liés à la logique métier
+- **Imports** : Bibliothèque standard d'abord, puis packages tiers
+- **Configuration** : Configs clients codées en dur dans le dict `CONFIG_CLIENTS` en haut de app.py
+- **Gestion d'erreurs** : Blocs try/except avec valeurs de repli (ex: "Erreur Perplexity")
+- **Cache** : Utiliser `@st.cache_data(ttl=600)` pour les fonctions de récupération de données
 
-### Streamlit Patterns
-- Wide layout: `st.set_page_config(layout="wide")`
-- Custom CSS via `st.markdown()` with `<style>` tags
-- Sidebar for client/filter selection
-- Tabs via `st.tabs()` for navigation
-- Session state for persistent selections
+### Patterns Streamlit
+- Layout large : `st.set_page_config(layout="wide")`
+- CSS personnalisé via `st.markdown()` avec balises `<style>`
+- Sidebar pour sélection client/filtres
+- Onglets via `st.tabs()` pour la navigation
+- Session state pour les sélections persistantes
 
-### Naming Conventions
-- `url_cible`: Target URL (client's website)
-- `urls_partenaires`: Partner/ally URLs
-- `mots_signatures`: Signature keywords for semantic analysis
-- `concurrent`: Competitor
-- `GEO score`: Visibility metric (0-100)
+### Conventions de Nommage
+- `url_cible` : URL cible (site web du client)
+- `urls_partenaires` : URLs des partenaires/alliés
+- `mots_signatures` : Mots-clés signatures pour l'analyse sémantique
+- `concurrent` : Concurrent
+- `GEO score` : Métrique de visibilité (0-100)
 
-### Google Sheets Structure
-- Spreadsheet: `GEO-Radar_DATA`
-- Worksheets:
-  - `CONFIG_CIBLES`: Client configuration (Mot_Cle, URL_Cible, URLs_Partenaires, Mots_Signatures)
-  - `LOGS_RESULTATS`: Scan results with timestamps, scores, AI responses
+### Structure Google Sheets
+- Classeur : `GEO-Radar_DATA`
+- Feuilles :
+  - `CONFIG_CIBLES` : Configuration clients (Mot_Cle, URL_Cible, URLs_Partenaires, Mots_Signatures)
+  - `LOGS_RESULTATS` : Résultats des scans avec horodatages, scores, réponses IA
 
-## Common Tasks
+## Tâches Courantes
 
-### Adding a New Client
-1. Add client config to `CONFIG_CLIENTS` dict in `app.py`:
+### Ajouter un Nouveau Client
+1. Ajouter la config client au dict `CONFIG_CLIENTS` dans `app.py` :
 ```python
-"NewClient": {
-    "url_cible": "newclient.com",
-    "urls_partenaires": ["partner1.com", "partner2.com"],
-    "mots_signatures": ["keyword1", "keyword2"],
+"NouveauClient": {
+    "url_cible": "nouveauclient.com",
+    "urls_partenaires": ["partenaire1.com", "partenaire2.com"],
+    "mots_signatures": ["motcle1", "motcle2"],
     "couleur": "#HEXCOLOR"
 }
 ```
-2. Add corresponding rows to `CONFIG_CIBLES` worksheet in Google Sheets
+2. Ajouter les lignes correspondantes à la feuille `CONFIG_CIBLES` dans Google Sheets
 
-### Modifying AI Prompts
-Edit the `prompt` template in `ask_ai_advanced()` function in `monitor.py`
+### Modifier les Prompts IA
+Éditer le template `prompt` dans la fonction `ask_ai_advanced()` dans `monitor.py`
 
-### Adding New Metrics/Charts
-- Add new metric calculations in relevant functions in `app.py`
-- Create visualizations using Plotly (`px.line()`, `px.bar()`, `px.pie()`, etc.)
-- Add to appropriate tab section
+### Ajouter de Nouvelles Métriques/Graphiques
+- Ajouter les nouveaux calculs de métriques dans les fonctions concernées de `app.py`
+- Créer les visualisations avec Plotly (`px.line()`, `px.bar()`, `px.pie()`, etc.)
+- Ajouter à la section d'onglet appropriée
 
-### Changing Scan Schedule
-Edit cron expression in `.github/workflows/daily.yml`:
+### Changer la Programmation des Scans
+Éditer l'expression cron dans `.github/workflows/daily.yml` :
 ```yaml
 schedule:
-  - cron: '0 8 * * *'  # Format: minute hour day month weekday
+  - cron: '0 8 * * *'  # Format: minute heure jour mois jour_semaine
 ```
 
-## Testing Considerations
+## Considérations de Test
 
-- No automated tests currently in the codebase
-- Manual testing via Streamlit UI
-- Monitor logs in GitHub Actions for scheduled runs
-- Google Sheets serves as data audit trail
+- Pas de tests automatisés actuellement dans le codebase
+- Tests manuels via l'UI Streamlit
+- Surveiller les logs dans GitHub Actions pour les exécutions programmées
+- Google Sheets sert de piste d'audit des données
 
-## Gotchas and Notes
+## Points d'Attention et Notes
 
-1. **Secrets access**: In Streamlit, use `st.secrets["KEY"]`; in GitHub Actions, secrets are environment variables
-2. **Rate limiting**: 2-second delay between queries in monitor.py (`time.sleep(2)`)
-3. **Score calculation**: Max score is 100 (capped in `calculate_geo_score()`)
-4. **PDF generation**: Uses ReportLab with custom styling; includes Plotly charts as images
-5. **Data caching**: Dashboard caches data for 10 minutes to reduce API calls
-6. **French localization**: All user-facing text is in French
+1. **Accès aux secrets** : Dans Streamlit, utiliser `st.secrets["KEY"]` ; dans GitHub Actions, les secrets sont des variables d'environnement
+2. **Limitation de débit** : Délai de 2 secondes entre les requêtes dans monitor.py (`time.sleep(2)`)
+3. **Calcul du score** : Score max de 100 (plafonné dans `calculate_geo_score()`)
+4. **Génération PDF** : Utilise ReportLab avec style personnalisé ; inclut les graphiques Plotly en images
+5. **Cache des données** : Le tableau de bord met en cache les données pendant 10 minutes pour réduire les appels API
+6. **Localisation française** : Tous les textes destinés aux utilisateurs sont en français
