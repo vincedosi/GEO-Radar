@@ -376,10 +376,10 @@ def get_client_config(client_name):
 
 def parse_sources(sources_str):
     """Parse la colonne Sources_Detectees"""
-    result = {"PPLX": [], "GEM": []}
+    result = {"PPLX": [], "GEM": [], "GPT": []}
     if not sources_str or pd.isna(sources_str) or sources_str == "":
         return result
-    
+
     parts = str(sources_str).split("|")
     for part in parts:
         part = part.strip()
@@ -391,6 +391,10 @@ def parse_sources(sources_str):
             sources = part.replace("GEM:", "").strip()
             if sources and sources != "N/A":
                 result["GEM"] = [s.strip() for s in sources.split(",") if s.strip() and s.strip() != "N/A"]
+        elif part.startswith("GPT:"):
+            sources = part.replace("GPT:", "").strip()
+            if sources and sources != "N/A":
+                result["GPT"] = [s.strip() for s in sources.split(",") if s.strip() and s.strip() != "N/A"]
     return result
 
 def classify_source(source, config):
@@ -1040,14 +1044,15 @@ with tab2:
     """, unsafe_allow_html=True)
     
     # KPIs scores
-    col1, col2, col3, col4 = st.columns(4)
-    
+    col1, col2, col3, col4, col5 = st.columns(5)
+
     avg_score = df_client['Score_Global'].mean() if len(df_client) > 0 else 0
     avg_pplx = df_client['Score_PPLX'].mean() if len(df_client) > 0 else 0
     avg_gem = df_client['Score_GEM'].mean() if len(df_client) > 0 else 0
+    avg_gpt = df_client['Score_GPT'].mean() if len(df_client) > 0 and 'Score_GPT' in df_client.columns else 0
     avg_reco = pd.to_numeric(df_client['Note_Recommandation'], errors='coerce').mean() if len(df_client) > 0 and 'Note_Recommandation' in df_client.columns else 0
     avg_reco = avg_reco if pd.notna(avg_reco) else 0
-    
+
     with col1:
         st.metric("Score GEO Global", f"{avg_score:.0f}%", help="Moyenne des scores de visibilité sur toutes les requêtes")
     with col2:
@@ -1055,18 +1060,21 @@ with tab2:
     with col3:
         st.metric("Score Gemini", f"{avg_gem:.0f}%", help="Score moyen sur Gemini")
     with col4:
+        st.metric("Score ChatGPT", f"{avg_gpt:.0f}%", help="Score moyen sur ChatGPT")
+    with col5:
         stars = "⭐" * int(round(avg_reco))
         st.metric("Recommandation", stars if stars else "—", help="Note moyenne de recommandation (1-5)")
     
     st.markdown('<div class="section-header">📈 Évolution Temporelle</div>', unsafe_allow_html=True)
     
     if len(df_resampled) > 0:
-        df_evolution = df_resampled.groupby('Periode').agg({
-            'Score_Global': 'mean',
-            'Score_PPLX': 'mean',
-            'Score_GEM': 'mean'
-        }).reset_index()
-        
+        # Colonnes d'agrégation disponibles
+        agg_cols = {'Score_Global': 'mean', 'Score_PPLX': 'mean', 'Score_GEM': 'mean'}
+        if 'Score_GPT' in df_resampled.columns:
+            agg_cols['Score_GPT'] = 'mean'
+
+        df_evolution = df_resampled.groupby('Periode').agg(agg_cols).reset_index()
+
         fig = go.Figure()
         fig.add_trace(go.Scatter(
             x=df_evolution['Periode'], y=df_evolution['Score_Global'],
@@ -1084,6 +1092,12 @@ with tab2:
             mode='lines+markers', name='♊ Gemini',
             line=dict(color='#10B981', width=2, dash='dot')
         ))
+        if 'Score_GPT' in df_evolution.columns:
+            fig.add_trace(go.Scatter(
+                x=df_evolution['Periode'], y=df_evolution['Score_GPT'],
+                mode='lines+markers', name='🤖 ChatGPT',
+                line=dict(color='#F59E0B', width=2, dash='dot')
+            ))
         fig.update_layout(
             template="plotly_white",
             height=400,
@@ -1114,18 +1128,28 @@ with tab2:
     """, unsafe_allow_html=True)
     
     if len(df_client) > 0:
+        # Colonnes disponibles pour l'affichage
+        display_cols = ['Mot_Cle', 'Score_Global', 'Score_PPLX', 'Score_GEM']
+        if 'Score_GPT' in df_client.columns:
+            display_cols.append('Score_GPT')
+        display_cols.extend(['Note_Recommandation', 'Concurrent_Principal'])
+        display_cols = [c for c in display_cols if c in df_client.columns]
+
+        col_config = {
+            "Mot_Cle": st.column_config.TextColumn("📝 Requête", width="large"),
+            "Score_Global": st.column_config.ProgressColumn("🎯 Score", min_value=0, max_value=100, format="%d%%"),
+            "Score_PPLX": st.column_config.ProgressColumn("⚡ PPLX", min_value=0, max_value=100, format="%d%%"),
+            "Score_GEM": st.column_config.ProgressColumn("♊ GEM", min_value=0, max_value=100, format="%d%%"),
+            "Score_GPT": st.column_config.ProgressColumn("🤖 GPT", min_value=0, max_value=100, format="%d%%"),
+            "Note_Recommandation": st.column_config.NumberColumn("⭐ Reco", format="%d"),
+            "Concurrent_Principal": st.column_config.TextColumn("🥊 Concurrent")
+        }
+
         st.dataframe(
-            df_client[['Mot_Cle', 'Score_Global', 'Score_PPLX', 'Score_GEM', 'Note_Recommandation', 'Concurrent_Principal']].sort_values('Score_Global', ascending=False),
+            df_client[display_cols].sort_values('Score_Global', ascending=False),
             use_container_width=True,
             hide_index=True,
-            column_config={
-                "Mot_Cle": st.column_config.TextColumn("📝 Requête", width="large"),
-                "Score_Global": st.column_config.ProgressColumn("🎯 Score", min_value=0, max_value=100, format="%d%%"),
-                "Score_PPLX": st.column_config.ProgressColumn("⚡ PPLX", min_value=0, max_value=100, format="%d%%"),
-                "Score_GEM": st.column_config.ProgressColumn("♊ GEM", min_value=0, max_value=100, format="%d%%"),
-                "Note_Recommandation": st.column_config.NumberColumn("⭐ Reco", format="%d"),
-                "Concurrent_Principal": st.column_config.TextColumn("🥊 Concurrent")
-            }
+            column_config=col_config
         )
 
 # -----------------------------------------------------------------------------
@@ -1266,7 +1290,7 @@ with tab4:
         parsed_sources = parse_sources(entry.get('Sources_Detectees', ''))
         
         # Résumé de la requête
-        col_sum1, col_sum2, col_sum3, col_sum4 = st.columns(4)
+        col_sum1, col_sum2, col_sum3, col_sum4, col_sum5 = st.columns(5)
         with col_sum1:
             score_class = "high" if entry['Score_Global'] >= 50 else "medium" if entry['Score_Global'] >= 30 else "low"
             st.markdown(f"<div style='text-align:center;'><span class='badge badge-score-{score_class}' style='font-size:16px;'>{entry['Score_Global']}%</span><br><small>Score Global</small></div>", unsafe_allow_html=True)
@@ -1277,6 +1301,10 @@ with tab4:
             is_gem = entry['Score_GEM'] >= 50
             st.markdown(f"<div style='text-align:center;'><span class='{'citation-yes' if is_gem else 'citation-no'}'>{'✅ Cité' if is_gem else '❌ Non cité'}</span><br><small>Gemini</small></div>", unsafe_allow_html=True)
         with col_sum4:
+            score_gpt = entry.get('Score_GPT', 0)
+            is_gpt = score_gpt >= 50 if pd.notna(score_gpt) else False
+            st.markdown(f"<div style='text-align:center;'><span class='{'citation-yes' if is_gpt else 'citation-no'}'>{'✅ Cité' if is_gpt else '❌ Non cité'}</span><br><small>ChatGPT</small></div>", unsafe_allow_html=True)
+        with col_sum5:
             conc = entry.get('Concurrent_Principal', 'N/A')
             st.markdown(f"<div style='text-align:center;'><span class='badge badge-concurrent'>{conc if conc != 'N/A' else '—'}</span><br><small>Concurrent</small></div>", unsafe_allow_html=True)
         
@@ -1284,8 +1312,8 @@ with tab4:
         
         # Sources détectées
         st.markdown("##### 📋 Sources citées dans les réponses")
-        col_src1, col_src2 = st.columns(2)
-        
+        col_src1, col_src2, col_src3 = st.columns(3)
+
         with col_src1:
             st.markdown("**⚡ Perplexity**")
             if parsed_sources['PPLX']:
@@ -1294,11 +1322,20 @@ with tab4:
                     st.markdown(f"<span class='badge badge-{src_type}'>{src}</span>", unsafe_allow_html=True)
             else:
                 st.caption("Aucune source détectée")
-        
+
         with col_src2:
             st.markdown("**♊ Gemini**")
             if parsed_sources['GEM']:
                 for src in parsed_sources['GEM']:
+                    src_type = classify_source(src, config)
+                    st.markdown(f"<span class='badge badge-{src_type}'>{src}</span>", unsafe_allow_html=True)
+            else:
+                st.caption("Aucune source détectée")
+
+        with col_src3:
+            st.markdown("**🤖 ChatGPT**")
+            if parsed_sources['GPT']:
+                for src in parsed_sources['GPT']:
                     src_type = classify_source(src, config)
                     st.markdown(f"<span class='badge badge-{src_type}'>{src}</span>", unsafe_allow_html=True)
             else:
@@ -1308,11 +1345,11 @@ with tab4:
         
         # Réponses complètes
         st.markdown("##### 📄 Réponses complètes des IA")
-        
-        all_sources = parsed_sources['PPLX'] + parsed_sources['GEM']
-        
-        col_pplx, col_gem = st.columns(2)
-        
+
+        all_sources = parsed_sources['PPLX'] + parsed_sources['GEM'] + parsed_sources['GPT']
+
+        col_pplx, col_gem, col_gpt = st.columns(3)
+
         with col_pplx:
             st.markdown(f"""
             <div class="motor-header pplx">
@@ -1320,10 +1357,10 @@ with tab4:
                 <span>Score : {entry['Score_PPLX']}%</span>
             </div>
             """, unsafe_allow_html=True)
-            
+
             text = highlight_text_advanced(entry.get('Texte_PPLX', ''), config, all_sources)
             st.markdown(f'<div class="reponse-ia">{text if text else "<em>Aucune réponse disponible</em>"}</div>', unsafe_allow_html=True)
-        
+
         with col_gem:
             st.markdown(f"""
             <div class="motor-header gem">
@@ -1331,9 +1368,22 @@ with tab4:
                 <span>Score : {entry['Score_GEM']}%</span>
             </div>
             """, unsafe_allow_html=True)
-            
+
             text_g = highlight_text_advanced(entry.get('Texte_GEM', ''), config, all_sources)
             st.markdown(f'<div class="reponse-ia">{text_g if text_g else "<em>Aucune réponse disponible</em>"}</div>', unsafe_allow_html=True)
+
+        with col_gpt:
+            score_gpt_val = entry.get('Score_GPT', 0)
+            score_gpt_display = int(score_gpt_val) if pd.notna(score_gpt_val) else 0
+            st.markdown(f"""
+            <div class="motor-header" style="background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); color: white;">
+                <span>🤖 ChatGPT</span>
+                <span>Score : {score_gpt_display}%</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+            text_gpt = highlight_text_advanced(entry.get('Texte_GPT', ''), config, all_sources)
+            st.markdown(f'<div class="reponse-ia">{text_gpt if text_gpt else "<em>Aucune réponse disponible</em>"}</div>', unsafe_allow_html=True)
     else:
         st.warning("Aucune donnée disponible pour cette période")
 
