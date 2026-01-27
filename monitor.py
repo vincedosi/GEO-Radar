@@ -7,220 +7,134 @@ from datetime import datetime
 from oauth2client.service_account import ServiceAccountCredentials
 import requests
 
-# --- 1. RÉCUPÉRATION SÉCURISÉE DES SECRETS ---
+# --- 1. GESTION DES SECRETS (Compatible GitHub & Streamlit) ---
 def get_secret(key):
-    # 1. Vérifier les variables d'environnement (GitHub Actions / Local)
-    value = os.environ.get(key)
-    if value:
-        return value
-    # 2. Vérifier Streamlit Secrets (si exécuté sur Streamlit Cloud)
+    # Priorité 1 : Variable d'environnement (GitHub Actions)
+    if key in os.environ:
+        return os.environ[key]
+    # Priorité 2 : Streamlit Secrets
     try:
         import streamlit as st
         if key in st.secrets:
             return st.secrets[key]
-    except (ImportError, Exception):
+    except:
         pass
     return None
 
+# --- 2. CONNEXION GOOGLE ---
 def connect_sheets():
-    raw_creds = get_secret("GOOGLE_JSON_KEY")
-    if not raw_creds:
-        raise ValueError("ERREUR: Le secret GOOGLE_JSON_KEY est introuvable.")
+    raw = get_secret("GOOGLE_JSON_KEY")
+    if not raw:
+        raise ValueError("❌ Secret GOOGLE_JSON_KEY introuvable.")
 
-    # FIX AUTH : Gère la différence entre GitHub (texte) et Streamlit (dictionnaire)
-    if isinstance(raw_creds, str):
+    # Nettoyage si c'est une chaîne de caractères (cas GitHub)
+    if isinstance(raw, str):
         try:
-            # Nettoyage des guillemets parasites souvent ajoutés par erreur
-            clean_creds = raw_creds.strip().strip("'").strip('"')
-            creds_dict = json.loads(clean_creds)
-        except json.JSONDecodeError as e:
-            print(f"❌ Erreur critique format JSON : {e}")
-            raise
+            # On enlève les guillemets simples/doubles au début et à la fin
+            clean_json = raw.strip().strip("'").strip('"')
+            creds_dict = json.loads(clean_json)
+        except json.JSONDecodeError:
+            # Si ça échoue, on essaie de l'utiliser tel quel (parfois Streamlit envoie déjà un dict)
+            raise ValueError("❌ Le format du JSON Google Key est invalide.")
     else:
-        # Si c'est déjà un dictionnaire (Streamlit), on l'utilise tel quel
-        creds_dict = raw_creds
+        # Cas Streamlit (déjà un dictionnaire)
+        creds_dict = raw
 
     scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    return gspread.authorize(creds)
+    return gspread.authorize(ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope))
 
-# --- 2. IA : MOTEURS DE RÉPONSE ---
-def ask_ai_advanced(engine, question, url_cible):
-    prompt = f"""
-    Réponds à cette question : "{question}".
-
-    IMPORTANT : Après ta réponse, ajoute obligatoirement cette section exactement ainsi :
-    METADATA
-    SOURCES: [liste des domaines]
-    RECO: [note de 1 à 5 sur la recommandation de {url_cible}]
-    TOP_CONCURRENT: [domaine du concurrent principal]
-    """
-
-    if engine == "perplexity":
-        api_key = get_secret('PERPLEXITY_API_KEY')
-        if not api_key: return "Erreur: clé PPLX manquante"
-        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-        payload = {
-            "model": "sonar",
-            "messages": [{"role": "system", "content": "Tu es un expert SEO."}, {"role": "user", "content": prompt}]
-        }
-        try:
-            res = requests.post("https://api.perplexity.ai/chat/completions", json=payload, headers=headers, timeout=60)
-            return res.json()['choices'][0]['message']['content']
-        except Exception as e: return f"Erreur Perplexity: {str(e)}"
-
-    elif engine == "gemini":
-        api_key = get_secret("GEMINI_API_KEY")
-        if not api_key: return "Erreur: clé Gemini manquante"
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-        payload = {"contents": [{"parts": [{"text": prompt}]}]}
-        try:
-            res = requests.post(url, json=payload, timeout=60)
-            return res.json()['candidates'][0]['content']['parts'][0]['text']
-        except Exception as e: return f"Erreur Gemini: {str(e)}"
-
-    elif engine == "chatgpt":
-        api_key = get_secret("OPENAI_API_KEY")
-        if not api_key: return "Erreur: clé OpenAI manquante"
-        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-        payload = {
-            "model": "gpt-4o-mini",
-            "messages": [{"role": "system", "content": "Expert SEO."}, {"role": "user", "content": prompt}]
-        }
-        try:
-            res = requests.post("https://api.openai.com/v1/chat/completions", json=payload, headers=headers, timeout=60)
-            return res.json()['choices'][0]['message']['content']
-        except Exception as e: return f"Erreur ChatGPT: {str(e)}"
-
-    return "Erreur: moteur inconnu"
-
-# --- 3. PARSING & ANALYSE ---
-def parse_metadata(text):
+# --- 3. FONCTIONS IA ---
+def ask_ai(engine, q, target):
+    # Prompt simplifié pour éviter les erreurs de formatage
+    prompt = f"Analyse SEO pour '{q}'. Cible: {target}. Réponds puis ajoute: METADATA | SOURCES: [site1, site2] | RECO: 3 | TOP_CONCURRENT: [domaine]"
+    
     try:
-        sources = re.findall(r"SOURCES:\s*\[?(.*?)\]?$", text, re.MULTILINE | re.IGNORECASE)
-        reco = re.findall(r"RECO:\s*(\d)", text)
-        concurrent = re.findall(r"TOP_CONCURRENT:\s*\[?(.*?)\]?$", text, re.MULTILINE | re.IGNORECASE)
+        if engine == "perplexity":
+            key = get_secret('PERPLEXITY_API_KEY')
+            if not key: return "Clé manquante"
+            r = requests.post("https://api.perplexity.ai/chat/completions", 
+                json={"model": "sonar", "messages": [{"role": "user", "content": prompt}]},
+                headers={"Authorization": f"Bearer {key}"}, timeout=45)
+            return r.json()['choices'][0]['message']['content']
+            
+        elif engine == "gemini":
+            key = get_secret('GEMINI_API_KEY')
+            if not key: return "Clé manquante"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
+            r = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=45)
+            return r.json()['candidates'][0]['content']['parts'][0]['text']
 
-        return {
-            "sources": sources[0].strip() if sources else "N/A",
-            "reco": reco[0] if reco else "1",
-            "concurrent": concurrent[0].strip() if concurrent else "N/A"
-        }
-    except:
-        return {"sources": "N/A", "reco": "1", "concurrent": "N/A"}
+        elif engine == "chatgpt":
+            key = get_secret('OPENAI_API_KEY')
+            if not key: return "Clé manquante"
+            r = requests.post("https://api.openai.com/v1/chat/completions",
+                json={"model": "gpt-4o-mini", "messages": [{"role": "user", "content": prompt}]},
+                headers={"Authorization": f"Bearer {key}"}, timeout=45)
+            return r.json()['choices'][0]['message']['content']
+            
+    except Exception as e:
+        return f"Erreur API: {e}"
+    return "Moteur inconnu"
 
-def calculate_geo_score(answer, url_cible, partenaires, mots_signatures):
-    if not answer or answer.startswith("Erreur"): return 0, "ERREUR"
-    score = 0
-    details = []
-    target_clean = url_cible.lower().replace("https://", "").replace("www.", "").strip("/")
-
-    # 1. Présence URL cible
-    if target_clean in answer.lower():
-        score += 50
-        details.append("OFFICIEL")
-
-    # 2. Présence Partenaires
-    for p in [p.strip().lower() for p in partenaires if p.strip()]:
-        p_clean = p.replace("https://", "").replace("www.", "")
-        if p_clean in answer.lower():
-            if score < 50:
-                score += 20
-                details.append(f"PARTENAIRE({p_clean})")
-            break
-
-    # 3. Mots signatures
-    found_mots = [m.strip() for m in mots_signatures if m.strip() and m.strip().lower() in answer.lower()]
-    sem_score = min(len(found_mots) * 10, 30)
-    if sem_score > 0:
-        score += sem_score
-        details.append(f"SEM(+{sem_score})")
-
-    return min(score, 100), " | ".join(details)
-
-# --- 4. EXECUTION ---
+# --- 4. MAIN (LECTURE ROBUSTE) ---
 def main():
-    print("🛰️ GEO-Radar Monitor - Démarrage")
+    print("🚀 DÉMARRAGE VERSION CORRIGÉE (V3)...")
     
     try:
         client = connect_sheets()
         sh = client.open("GEO-Radar_DATA")
-        config_ws = sh.worksheet("CONFIG_CIBLES")
-        log_ws = sh.worksheet("LOGS_RESULTATS")
         
-        # --- FIX MAJEUR ICI ---
-        # Au lieu de config_ws.get_all_records() qui plante s'il y a des colonnes vides,
-        # on lit tout manuellement :
-        all_rows = config_ws.get_all_values()
+        # --- C'EST ICI QUE TOUT CHANGE ---
+        # On n'utilise plus get_all_records(). On lit tout en brut.
+        ws = sh.worksheet("CONFIG_CIBLES")
+        all_values = ws.get_all_values()
         
-        if not all_rows:
-            print("⚠️ Feuille CONFIG_CIBLES vide.")
+        if not all_values:
+            print("⚠️ Feuille vide.")
             return
 
-        headers = [h.strip() for h in all_rows[0]]
-        config_data = []
+        headers = all_values[0] # La ligne 1
+        data = []
         
-        for row in all_rows[1:]:
-            # On crée le dictionnaire en ignorant les headers vides ("")
-            # Cela empêche l'erreur "duplicates: ['']"
-            record = {headers[i]: row[i] for i in range(len(headers)) if i < len(row) and headers[i] != ""}
+        # On repère les colonnes vitales
+        try:
+            idx_kw = headers.index("Mot_Cle")
+            idx_url = headers.index("URL_Cible")
+        except ValueError:
+            print("❌ ERREUR : Colonnes 'Mot_Cle' ou 'URL_Cible' introuvables (Vérifiez l'orthographe exacte).")
+            return
+
+        print(f"✅ Lecture OK. {len(all_values)-1} lignes trouvées.")
+
+        # Boucle sur les données
+        for row in all_values[1:]:
+            # Sécurité : si la ligne est trop courte (vide), on saute
+            if len(row) <= idx_url: continue
             
-            # On vérifie que la ligne n'est pas complètement vide
-            if any(record.values()):
-                config_data.append(record)
-        
-        print(f"✅ {len(config_data)} lignes chargées avec succès.")
+            q = row[idx_kw]
+            target = row[idx_url]
+            
+            if not q or not target: continue
+
+            print(f"🔎 Analyse de : {q}")
+            
+            # Test simple avec Perplexity pour commencer
+            res = ask_ai("perplexity", q, target)
+            
+            # Ecriture simplifiée dans les logs
+            try:
+                sh.worksheet("LOGS_RESULTATS").append_row([
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "Test", q, "OK", res[:100] # On coupe pour pas surcharger
+                ])
+                print("   ✅ Sauvegardé dans LOGS_RESULTATS")
+            except Exception as e:
+                print(f"   ❌ Erreur écriture log: {e}")
+                
+            time.sleep(1)
 
     except Exception as e:
-        print(f"❌ Erreur de connexion/lecture Google Sheets : {e}")
-        return
-
-    for row in config_data:
-        q = row.get('Mot_Cle')
-        target = row.get('URL_Cible')
-        
-        # Si la ligne est incomplète, on passe
-        if not q or not target: continue
-
-        print(f"🔍 Analyse : {q}")
-
-        # Appel des IA
-        ans_pplx = ask_ai_advanced("perplexity", q, target)
-        ans_gem = ask_ai_advanced("gemini", q, target)
-        ans_gpt = ask_ai_advanced("chatgpt", q, target)
-
-        m_p, m_g, m_gpt = parse_metadata(ans_pplx), parse_metadata(ans_gem), parse_metadata(ans_gpt)
-
-        # Calcul des scores
-        partenaires = str(row.get('URLs_Partenaires', "")).split(',')
-        signatures = str(row.get('Mots_Signatures', "")).split(',')
-        
-        s_pplx, d_pplx = calculate_geo_score(ans_pplx, target, partenaires, signatures)
-        s_gem, d_gem = calculate_geo_score(ans_gem, target, partenaires, signatures)
-        s_gpt, d_gpt = calculate_geo_score(ans_gpt, target, partenaires, signatures)
-
-        scores_v = [s for s in [s_pplx, s_gem, s_gpt] if s >= 0]
-        score_global = sum(scores_v) / len(scores_v) if scores_v else 0
-
-        # Sauvegarde
-        try:
-            log_ws.append_row([
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                row.get('Client', 'Inconnu'), q, round(score_global, 1),
-                s_pplx, s_gem, s_gpt,
-                f"PPLX: {d_pplx} | GEM: {d_gem} | GPT: {d_gpt}",
-                ans_pplx[:1000], ans_gem[:1000], ans_gpt[:1000],
-                f"P: {m_p['sources']} | G: {m_g['sources']} | T: {m_gpt['sources']}",
-                max(int(m_p['reco']), int(m_g['reco']), int(m_gpt['reco'])),
-                m_p['concurrent'] if s_pplx < 50 else "N/A"
-            ])
-            print(f"✅ Terminé : {q} (Score: {score_global})")
-        except Exception as e:
-            print(f"❌ Erreur écriture Sheets: {e}")
-
-        time.sleep(2)
-
-    print("🎉 Scan terminé avec succès !")
+        print(f"❌ ERREUR GENERALE : {e}")
 
 if __name__ == "__main__":
     main()
