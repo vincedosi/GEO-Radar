@@ -356,11 +356,9 @@ def get_data():
     df_data = [[row[i] for i, _ in clean_headers] for row in data]
     df = pd.DataFrame(df_data, columns=[h for _, h in clean_headers])
 
-    # Convertit les colonnes numériques
-    numeric_cols = ['Score_Global', 'Score_Perplexity', 'Score_Gemini', 'GEO_Score',
-                    'Score', 'Reco_Score', 'Position']
-    for col in numeric_cols:
-        if col in df.columns:
+    # Convertit toutes les colonnes contenant "Score" ou "score" en numérique
+    for col in df.columns:
+        if 'score' in col.lower() or col in ['Position', 'Reco']:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
     if 'Timestamp' in df.columns:
